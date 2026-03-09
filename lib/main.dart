@@ -37,6 +37,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   double get remainingBudget => totalBudget - totalSpent;
 
+  /// EDIT BUDGET POPUP
+  void editBudget() {
+    final controller = TextEditingController();
+
+    controller.text = totalBudget.toString();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Edit Total Budget"),
+
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: "Budget (SGD)"),
+          ),
+
+          actions: [
+            TextButton(
+              child: const Text("Cancel"),
+              onPressed: () {
+                Navigator.pop(context);
+              },
+            ),
+
+            ElevatedButton(
+              child: const Text("Save"),
+              onPressed: () {
+                setState(() {
+                  totalBudget = double.tryParse(controller.text) ?? totalBudget;
+                });
+
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void addExpense(Expense expense) {
     setState(() {
       expenses.add(expense);
@@ -112,6 +154,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: ListTile(
                 title: const Text("Total Budget"),
                 subtitle: Text("SGD ${totalBudget.toStringAsFixed(0)}"),
+                trailing: const Icon(Icons.edit),
+                onTap: editBudget,
               ),
             ),
 
@@ -139,12 +183,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: PieChart(
                 PieChartData(
                   sections: categoryData.entries.map((entry) {
-                    final percentage = (entry.value / totalSpent * 100)
-                        .toStringAsFixed(0);
+                    final percentage = totalSpent == 0
+                        ? 0
+                        : (entry.value / totalSpent * 100);
 
                     return PieChartSectionData(
                       value: entry.value,
-                      title: "$percentage%",
+                      title: "${percentage.toStringAsFixed(0)}%",
                       radius: 70,
                     );
                   }).toList(),
