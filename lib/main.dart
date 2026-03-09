@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'models/expense.dart';
 import 'screens/add_expense.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 void main() {
   runApp(const RenoBudgetApp());
@@ -37,14 +39,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<Expense> expenses = [];
 
-  double get totalSpent => expenses.fold(0, (sum, item) => sum + item.amount);
+  int touchedIndex = -1;
 
-  double get remainingBudget => totalBudget - totalSpent;
-
-  double get progress =>
-      totalBudget == 0 ? 0 : (totalSpent / totalBudget).clamp(0, 1);
-
-  /// PIE CHART COLORS
   final List<Color> chartColors = [
     Colors.indigo,
     Colors.orange,
@@ -54,6 +50,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Colors.teal,
     Colors.amber,
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    loadExpenses();
+  }
+
+  double get totalSpent => expenses.fold(0, (sum, item) => sum + item.amount);
+
+  double get remainingBudget => totalBudget - totalSpent;
+
+  double get progress =>
+      totalBudget == 0 ? 0 : (totalSpent / totalBudget).clamp(0, 1);
+
+  /// SAVE EXPENSES
+  Future<void> saveExpenses() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final data = expenses
+        .map(
+          (e) => jsonEncode({
+            'item': e.item,
+            'category': e.category,
+            'amount': e.amount,
+          }),
+        )
+        .toList();
+
+    await prefs.setStringList('expenses', data);
+  }
+
+  /// LOAD EXPENSES
+  Future<void> loadExpenses() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final data = prefs.getStringList('expenses');
+
+    if (data != null) {
+      setState(() {
+        expenses = data.map((e) {
+          final decoded = jsonDecode(e);
+          return Expense(
+            item: decoded['item'],
+            category: decoded['category'],
+            amount: decoded['amount'],
+          );
+        }).toList();
+      });
+    }
+  }
 
   /// EDIT BUDGET
   void editBudget() {
@@ -97,18 +143,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       expenses.add(expense);
     });
+
+    saveExpenses();
   }
 
   void updateExpense(int index, Expense updatedExpense) {
     setState(() {
       expenses[index] = updatedExpense;
     });
+
+    saveExpenses();
   }
 
   void deleteExpense(int index) {
     setState(() {
       expenses.removeAt(index);
     });
+
+    saveExpenses();
   }
 
   Map<String, double> getCategoryTotals() {
@@ -164,11 +216,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           child: Column(
             children: [
-              /// TOTAL BUDGET
+              /// BUDGET CARDS
               Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
                 child: ListTile(
                   title: const Text("Total Budget"),
                   subtitle: Text("SGD ${totalBudget.toStringAsFixed(0)}"),
@@ -177,22 +226,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              /// TOTAL SPENT
               Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
                 child: ListTile(
                   title: const Text("Total Spent"),
                   subtitle: Text("SGD ${totalSpent.toStringAsFixed(0)}"),
                 ),
               ),
 
-              /// REMAINING BUDGET
               Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
                 child: ListTile(
                   title: const Text("Remaining Budget"),
                   subtitle: Text("SGD ${remainingBudget.toStringAsFixed(0)}"),
@@ -201,34 +242,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               const SizedBox(height: 20),
 
-              /// BUDGET PROGRESS
+              /// PROGRESS BAR
               Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         "Budget Usage",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
 
                       const SizedBox(height: 10),
 
-                      LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 10,
-                        backgroundColor: Colors.grey.shade300,
-                        color: Colors.indigo,
-                      ),
+                      LinearProgressIndicator(value: progress, minHeight: 10),
 
                       const SizedBox(height: 6),
 
@@ -242,19 +270,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               /// PIE CHART
               Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-
                 child: Padding(
                   padding: const EdgeInsets.all(20),
 
-                  child: SizedBox(
-                    height: 220,
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: 220,
 
-                    child: PieChart(
-                      PieChartData(
-                        sections: categoryData.entries
+                        child: PieChart(
+                          PieChartData(
+                            pieTouchData: PieTouchData(
+                              touchCallback: (event, response) {
+                                setState(() {
+                                  if (!event.isInterestedForInteractions ||
+                                      response == null ||
+                                      response.touchedSection == null) {
+                                    touchedIndex = -1;
+                                    return;
+                                  }
+
+                                  touchedIndex = response
+                                      .touchedSection!
+                                      .touchedSectionIndex;
+                                });
+                              },
+                            ),
+
+                            sections: categoryData.entries
+                                .toList()
+                                .asMap()
+                                .entries
+                                .map((entry) {
+                                  final index = entry.key;
+                                  final data = entry.value;
+
+                                  final percentage = totalSpent == 0
+                                      ? 0
+                                      : (data.value / totalSpent * 100);
+
+                                  final isTouched = index == touchedIndex;
+
+                                  return PieChartSectionData(
+                                    color:
+                                        chartColors[index % chartColors.length],
+                                    value: data.value,
+                                    title: "${percentage.toStringAsFixed(0)}%",
+                                    radius: isTouched ? 80 : 70,
+                                    titleStyle: const TextStyle(
+                                      color: Colors.white,
+                                    ),
+                                  );
+                                })
+                                .toList(),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      /// LEGEND
+                      Column(
+                        children: categoryData.entries
                             .toList()
                             .asMap()
                             .entries
@@ -262,24 +339,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               final index = entry.key;
                               final data = entry.value;
 
-                              final percentage = totalSpent == 0
-                                  ? 0
-                                  : (data.value / totalSpent * 100);
+                              return Row(
+                                children: [
+                                  Container(
+                                    width: 16,
+                                    height: 16,
+                                    color:
+                                        chartColors[index % chartColors.length],
+                                  ),
 
-                              return PieChartSectionData(
-                                color: chartColors[index % chartColors.length],
-                                value: data.value,
-                                title: "${percentage.toStringAsFixed(0)}%",
-                                radius: 70,
-                                titleStyle: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                  const SizedBox(width: 8),
+
+                                  Text(
+                                    "${data.key} - SGD ${data.value.toStringAsFixed(0)}",
+                                  ),
+                                ],
                               );
                             })
                             .toList(),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -297,10 +376,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   final expense = expenses[index];
 
                   return Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-
                     child: Dismissible(
                       key: Key(expense.item + index.toString()),
 
@@ -318,6 +393,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: ListTile(
                         title: Text(expense.item),
                         subtitle: Text(expense.category),
+
                         trailing: Text(
                           "SGD ${expense.amount.toStringAsFixed(0)}",
                           style: const TextStyle(fontWeight: FontWeight.bold),
