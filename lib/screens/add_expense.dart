@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/expense.dart';
 
 class AddExpenseScreen extends StatefulWidget {
-  const AddExpenseScreen({super.key});
+  final Expense? existingExpense;
+
+  const AddExpenseScreen({super.key, this.existingExpense});
 
   @override
   State<AddExpenseScreen> createState() => _AddExpenseScreenState();
@@ -10,60 +12,120 @@ class AddExpenseScreen extends StatefulWidget {
 
 class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final itemController = TextEditingController();
-  final categoryController = TextEditingController();
   final amountController = TextEditingController();
 
+  String selectedCategory = "Carpentry";
+
+  final List<String> categories = [
+    "Carpentry",
+    "Electrical",
+    "Flooring",
+    "Painting",
+    "Plumbing",
+    "Lighting",
+    "Furniture",
+    "Appliances",
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.existingExpense != null) {
+      itemController.text = widget.existingExpense!.item;
+      amountController.text = widget.existingExpense!.amount.toString();
+      selectedCategory = widget.existingExpense!.category;
+    }
+  }
+
   void saveExpense() {
-    final item = itemController.text;
-    final category = categoryController.text;
+    final item = itemController.text.trim();
     final amount = double.tryParse(amountController.text) ?? 0;
 
-    Expense newExpense = Expense(
+    if (item.isEmpty || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter valid expense details")),
+      );
+      return;
+    }
+
+    Expense expense = Expense(
       item: item,
-      category: category,
+      category: selectedCategory,
       amount: amount,
     );
 
-    Navigator.pop(context, newExpense);
+    Navigator.pop(context, expense);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isEditing = widget.existingExpense != null;
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Add Expense")),
+      appBar: AppBar(title: Text(isEditing ? "Edit Expense" : "Add Expense")),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              TextField(
+                controller: itemController,
+                decoration: const InputDecoration(
+                  labelText: "Item Name",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 20),
 
-      body: Padding(
-        padding: const EdgeInsets.all(20),
+              DropdownButtonFormField<String>(
+                value: selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: "Category",
+                  border: OutlineInputBorder(),
+                ),
+                items: categories.map((category) {
+                  return DropdownMenuItem(
+                    value: category,
+                    child: Text(category),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedCategory = value!;
+                  });
+                },
+              ),
 
-        child: Column(
-          children: [
-            TextField(
-              controller: itemController,
-              decoration: const InputDecoration(labelText: "Item Name"),
-            ),
+              const SizedBox(height: 20),
 
-            const SizedBox(height: 10),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: "Amount (SGD)",
+                  prefixText: "SGD ",
+                  border: OutlineInputBorder(),
+                ),
+              ),
 
-            TextField(
-              controller: categoryController,
-              decoration: const InputDecoration(labelText: "Category"),
-            ),
+              const SizedBox(height: 30),
 
-            const SizedBox(height: 10),
-
-            TextField(
-              controller: amountController,
-              decoration: const InputDecoration(labelText: "Amount"),
-              keyboardType: TextInputType.number,
-            ),
-
-            const SizedBox(height: 30),
-
-            ElevatedButton(
-              onPressed: saveExpense,
-              child: const Text("Save Expense"),
-            ),
-          ],
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: saveExpense,
+                  child: Text(
+                    isEditing ? "Update Expense" : "Save Expense",
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
