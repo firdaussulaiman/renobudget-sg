@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/expense.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   final Expense? existingExpense;
@@ -15,6 +17,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final amountController = TextEditingController();
 
   String selectedCategory = "Carpentry";
+
+  File? receiptImage;
+
+  final picker = ImagePicker();
 
   final List<String> categories = [
     "Carpentry",
@@ -35,9 +41,25 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       itemController.text = widget.existingExpense!.item;
       amountController.text = widget.existingExpense!.amount.toString();
       selectedCategory = widget.existingExpense!.category;
+
+      if (widget.existingExpense!.receiptPath != null) {
+        receiptImage = File(widget.existingExpense!.receiptPath!);
+      }
     }
   }
 
+  /// PICK IMAGE
+  Future<void> pickImage() async {
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        receiptImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  /// SAVE EXPENSE
   void saveExpense() {
     final item = itemController.text.trim();
     final amount = double.tryParse(amountController.text) ?? 0;
@@ -53,6 +75,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       item: item,
       category: selectedCategory,
       amount: amount,
+      receiptPath: receiptImage?.path,
     );
 
     Navigator.pop(context, expense);
@@ -64,11 +87,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(isEditing ? "Edit Expense" : "Add Expense")),
+
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(20),
+
           child: Column(
             children: [
+              /// ITEM NAME
               TextField(
                 controller: itemController,
                 decoration: const InputDecoration(
@@ -76,10 +102,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
+
               const SizedBox(height: 20),
 
+              /// CATEGORY
               DropdownButtonFormField<String>(
-                value: selectedCategory,
+                initialValue: selectedCategory,
                 decoration: const InputDecoration(
                   labelText: "Category",
                   border: OutlineInputBorder(),
@@ -99,6 +127,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
               const SizedBox(height: 20),
 
+              /// AMOUNT
               TextField(
                 controller: amountController,
                 keyboardType: const TextInputType.numberWithOptions(
@@ -111,8 +140,33 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 ),
               ),
 
+              const SizedBox(height: 20),
+
+              /// RECEIPT BUTTON
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: pickImage,
+                  icon: const Icon(Icons.photo_camera),
+                  label: const Text("Add Receipt Photo"),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              /// IMAGE PREVIEW
+              if (receiptImage != null)
+                Column(
+                  children: [
+                    const Text("Receipt Preview"),
+                    const SizedBox(height: 10),
+                    Image.file(receiptImage!, height: 140),
+                  ],
+                ),
+
               const SizedBox(height: 30),
 
+              /// SAVE BUTTON
               SizedBox(
                 width: double.infinity,
                 height: 50,

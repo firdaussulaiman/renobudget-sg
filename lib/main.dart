@@ -5,6 +5,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
 void main() {
   runApp(const RenoBudgetApp());
 }
@@ -35,18 +39,19 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   double totalBudget = 50000;
+
   List<Expense> expenses = [];
+
   int touchedIndex = -1;
 
-  final Map<String, double> categoryBudgets = {
-    "Carpentry": 25000,
-    "Electrical": 5000,
-    "Painting": 4000,
-    "Lighting": 3000,
-    "Plumbing": 3000,
-    "Flooring": 8000,
-    "Furniture": 5000,
-    "Appliances": 4000,
+  /// Renovation Timeline
+  Map<String, bool> renovationTimeline = {
+    "Hacking": false,
+    "Plumbing": false,
+    "Electrical": false,
+    "Carpentry": false,
+    "Painting": false,
+    "Cleaning": false,
   };
 
   final List<Color> chartColors = [
@@ -64,6 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     loadBudget();
     loadExpenses();
+    loadTimeline();
   }
 
   double get totalSpent => expenses.fold(0, (sum, item) => sum + item.amount);
@@ -82,6 +88,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// LOAD BUDGET
   Future<void> loadBudget() async {
     final prefs = await SharedPreferences.getInstance();
+
     setState(() {
       totalBudget = prefs.getDouble('totalBudget') ?? 50000;
     });
@@ -97,6 +104,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'item': e.item,
             'category': e.category,
             'amount': e.amount,
+            'receiptPath': e.receiptPath,
           }),
         )
         .toList();
@@ -107,18 +115,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// LOAD EXPENSES
   Future<void> loadExpenses() async {
     final prefs = await SharedPreferences.getInstance();
+
     final data = prefs.getStringList('expenses');
 
     if (data != null) {
       setState(() {
         expenses = data.map((e) {
           final decoded = jsonDecode(e);
+
           return Expense(
             item: decoded['item'],
             category: decoded['category'],
             amount: decoded['amount'],
+            receiptPath: decoded['receiptPath'],
           );
         }).toList();
+      });
+    }
+  }
+
+  /// SAVE TIMELINE
+  Future<void> saveTimeline() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString("timeline", jsonEncode(renovationTimeline));
+  }
+
+  /// LOAD TIMELINE
+  Future<void> loadTimeline() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final data = prefs.getString("timeline");
+
+    if (data != null) {
+      setState(() {
+        renovationTimeline = Map<String, bool>.from(jsonDecode(data));
       });
     }
   }
@@ -128,6 +159,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       expenses.add(expense);
     });
+
     saveExpenses();
   }
 
@@ -136,6 +168,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       expenses[index] = updatedExpense;
     });
+
     saveExpenses();
   }
 
@@ -144,6 +177,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       expenses.removeAt(index);
     });
+
     saveExpenses();
   }
 
@@ -199,6 +233,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return data;
   }
 
+  /// EXPORT PDF
+  Future<void> exportPDF() async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        build: (context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                "RenoBudget SG Report",
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+
+              pw.SizedBox(height: 20),
+
+              pw.Text("Total Budget: SGD ${totalBudget.toStringAsFixed(0)}"),
+              pw.Text("Total Spent: SGD ${totalSpent.toStringAsFixed(0)}"),
+              pw.Text(
+                "Remaining Budget: SGD ${remainingBudget.toStringAsFixed(0)}",
+              ),
+
+              pw.SizedBox(height: 20),
+
+              pw.Text("Expenses", style: pw.TextStyle(fontSize: 18)),
+
+              pw.SizedBox(height: 10),
+
+              ...expenses.map((e) {
+                return pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text("${e.item} (${e.category})"),
+
+                    pw.Text("SGD ${e.amount.toStringAsFixed(0)}"),
+                  ],
+                );
+              }),
+            ],
+          );
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+    );
+  }
+
   Future<void> openAddExpense() async {
     final result = await Navigator.push(
       context,
@@ -224,21 +311,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Color getBudgetColor(double spent, double limit) {
-    final percent = spent / limit;
-
-    if (percent > 1) return Colors.red;
-    if (percent > 0.8) return Colors.orange;
-
-    return Colors.green;
-  }
-
   @override
   Widget build(BuildContext context) {
     final categoryData = getCategoryTotals();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("RenoBudget SG")),
+      appBar: AppBar(
+        title: const Text("RenoBudget SG"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            onPressed: exportPDF,
+          ),
+        ],
+      ),
 
       floatingActionButton: FloatingActionButton(
         onPressed: openAddExpense,
@@ -285,7 +371,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -308,11 +393,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               const SizedBox(height: 20),
 
+              /// RENOVATION TIMELINE
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        "Renovation Timeline",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      ...renovationTimeline.keys.map((stage) {
+                        return CheckboxListTile(
+                          title: Text(stage),
+
+                          value: renovationTimeline[stage],
+
+                          onChanged: (value) {
+                            setState(() {
+                              renovationTimeline[stage] = value!;
+                            });
+
+                            saveTimeline();
+                          },
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
               /// PIE CHART
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-
                   child: categoryData.isEmpty
                       ? const SizedBox(
                           height: 200,
@@ -328,21 +450,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           height: 220,
                           child: PieChart(
                             PieChartData(
-                              pieTouchData: PieTouchData(
-                                touchCallback: (event, response) {
-                                  setState(() {
-                                    if (!event.isInterestedForInteractions ||
-                                        response == null ||
-                                        response.touchedSection == null) {
-                                      touchedIndex = -1;
-                                      return;
-                                    }
-                                    touchedIndex = response
-                                        .touchedSection!
-                                        .touchedSectionIndex;
-                                  });
-                                },
-                              ),
                               sections: categoryData.entries
                                   .toList()
                                   .asMap()
@@ -351,10 +458,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     final index = entry.key;
                                     final data = entry.value;
 
-                                    final percentage =
-                                        (data.value / totalSpent * 100);
-
-                                    final isTouched = index == touchedIndex;
+                                    final percentage = totalSpent == 0
+                                        ? 0
+                                        : (data.value / totalSpent * 100);
 
                                     return PieChartSectionData(
                                       color:
@@ -363,7 +469,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       value: data.value,
                                       title:
                                           "${percentage.toStringAsFixed(0)}%",
-                                      radius: isTouched ? 80 : 70,
+                                      radius: 70,
                                       titleStyle: const TextStyle(
                                         color: Colors.white,
                                       ),
@@ -408,8 +514,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         subtitle: Row(
                           children: [
                             Text(expense.category),
+
                             const SizedBox(width: 6),
-                            const Icon(Icons.receipt, size: 16),
+
+                            if (expense.receiptPath != null)
+                              const Icon(Icons.receipt, size: 16),
                           ],
                         ),
 
