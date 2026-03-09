@@ -20,7 +20,6 @@ class RenoBudgetApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.indigo,
         scaffoldBackgroundColor: const Color(0xffF5F7FB),
-        fontFamily: 'Roboto',
       ),
       home: const DashboardScreen(),
     );
@@ -36,12 +35,9 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   double totalBudget = 50000;
-
   List<Expense> expenses = [];
-
   int touchedIndex = -1;
 
-  /// CATEGORY LIMITS
   final Map<String, double> categoryBudgets = {
     "Carpentry": 25000,
     "Electrical": 5000,
@@ -66,6 +62,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    loadBudget();
     loadExpenses();
   }
 
@@ -75,6 +72,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   double get progress =>
       totalBudget == 0 ? 0 : (totalSpent / totalBudget).clamp(0, 1);
+
+  /// SAVE BUDGET
+  Future<void> saveBudget() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('totalBudget', totalBudget);
+  }
+
+  /// LOAD BUDGET
+  Future<void> loadBudget() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      totalBudget = prefs.getDouble('totalBudget') ?? 50000;
+    });
+  }
 
   /// SAVE EXPENSES
   Future<void> saveExpenses() async {
@@ -96,7 +107,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// LOAD EXPENSES
   Future<void> loadExpenses() async {
     final prefs = await SharedPreferences.getInstance();
-
     final data = prefs.getStringList('expenses');
 
     if (data != null) {
@@ -113,6 +123,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  /// ADD EXPENSE
   void addExpense(Expense expense) {
     setState(() {
       expenses.add(expense);
@@ -120,6 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     saveExpenses();
   }
 
+  /// UPDATE EXPENSE
   void updateExpense(int index, Expense updatedExpense) {
     setState(() {
       expenses[index] = updatedExpense;
@@ -127,11 +139,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
     saveExpenses();
   }
 
+  /// DELETE EXPENSE
   void deleteExpense(int index) {
     setState(() {
       expenses.removeAt(index);
     });
     saveExpenses();
+  }
+
+  /// EDIT TOTAL BUDGET
+  void editBudget() {
+    final controller = TextEditingController(text: totalBudget.toString());
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Edit Total Budget"),
+
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: "Budget Amount"),
+          ),
+
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text("Cancel"),
+            ),
+
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  totalBudget = double.tryParse(controller.text) ?? totalBudget;
+                });
+
+                saveBudget();
+
+                Navigator.pop(context);
+              },
+              child: const Text("Save"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Map<String, double> getCategoryTotals() {
@@ -172,13 +227,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Color getBudgetColor(double spent, double limit) {
     final percent = spent / limit;
 
-    if (percent > 1) {
-      return Colors.red;
-    } else if (percent > 0.8) {
-      return Colors.orange;
-    } else {
-      return Colors.green;
-    }
+    if (percent > 1) return Colors.red;
+    if (percent > 0.8) return Colors.orange;
+
+    return Colors.green;
   }
 
   @override
@@ -186,7 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final categoryData = getCategoryTotals();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("RenoBudget SG"), elevation: 0),
+      appBar: AppBar(title: const Text("RenoBudget SG")),
 
       floatingActionButton: FloatingActionButton(
         onPressed: openAddExpense,
@@ -204,6 +256,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: ListTile(
                   title: const Text("Total Budget"),
                   subtitle: Text("SGD ${totalBudget.toStringAsFixed(0)}"),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: editBudget,
+                  ),
                 ),
               ),
 
@@ -240,10 +296,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                       const SizedBox(height: 10),
 
-                      LinearProgressIndicator(
-                        value: progress > 1 ? 1 : progress,
-                        minHeight: 10,
-                      ),
+                      LinearProgressIndicator(value: progress, minHeight: 10),
 
                       const SizedBox(height: 6),
 
@@ -260,141 +313,67 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(20),
 
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        height: 220,
-
-                        child: PieChart(
-                          PieChartData(
-                            pieTouchData: PieTouchData(
-                              touchCallback: (event, response) {
-                                setState(() {
-                                  if (!event.isInterestedForInteractions ||
-                                      response == null ||
-                                      response.touchedSection == null) {
-                                    touchedIndex = -1;
-                                    return;
-                                  }
-
-                                  touchedIndex = response
-                                      .touchedSection!
-                                      .touchedSectionIndex;
-                                });
-                              },
+                  child: categoryData.isEmpty
+                      ? const SizedBox(
+                          height: 200,
+                          child: Center(
+                            child: Text(
+                              "No expenses yet.\nTap + to add your first renovation item.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey),
                             ),
+                          ),
+                        )
+                      : SizedBox(
+                          height: 220,
+                          child: PieChart(
+                            PieChartData(
+                              pieTouchData: PieTouchData(
+                                touchCallback: (event, response) {
+                                  setState(() {
+                                    if (!event.isInterestedForInteractions ||
+                                        response == null ||
+                                        response.touchedSection == null) {
+                                      touchedIndex = -1;
+                                      return;
+                                    }
+                                    touchedIndex = response
+                                        .touchedSection!
+                                        .touchedSectionIndex;
+                                  });
+                                },
+                              ),
+                              sections: categoryData.entries
+                                  .toList()
+                                  .asMap()
+                                  .entries
+                                  .map((entry) {
+                                    final index = entry.key;
+                                    final data = entry.value;
 
-                            sections: categoryData.entries
-                                .toList()
-                                .asMap()
-                                .entries
-                                .map((entry) {
-                                  final index = entry.key;
-                                  final data = entry.value;
+                                    final percentage =
+                                        (data.value / totalSpent * 100);
 
-                                  final percentage = totalSpent == 0
-                                      ? 0
-                                      : (data.value / totalSpent * 100);
+                                    final isTouched = index == touchedIndex;
 
-                                  final isTouched = index == touchedIndex;
-
-                                  return PieChartSectionData(
-                                    color:
-                                        chartColors[index % chartColors.length],
-                                    value: data.value,
-                                    title: "${percentage.toStringAsFixed(0)}%",
-                                    radius: isTouched ? 80 : 70,
-                                    titleStyle: const TextStyle(
-                                      color: Colors.white,
-                                    ),
-                                  );
-                                })
-                                .toList(),
+                                    return PieChartSectionData(
+                                      color:
+                                          chartColors[index %
+                                              chartColors.length],
+                                      value: data.value,
+                                      title:
+                                          "${percentage.toStringAsFixed(0)}%",
+                                      radius: isTouched ? 80 : 70,
+                                      titleStyle: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                    );
+                                  })
+                                  .toList(),
+                            ),
                           ),
                         ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      /// LEGEND
-                      Column(
-                        children: categoryData.entries
-                            .toList()
-                            .asMap()
-                            .entries
-                            .map((entry) {
-                              final index = entry.key;
-                              final data = entry.value;
-
-                              return Row(
-                                children: [
-                                  Container(
-                                    width: 16,
-                                    height: 16,
-                                    color:
-                                        chartColors[index % chartColors.length],
-                                  ),
-
-                                  const SizedBox(width: 8),
-
-                                  Text(
-                                    "${data.key} - SGD ${data.value.toStringAsFixed(0)}",
-                                  ),
-                                ],
-                              );
-                            })
-                            .toList(),
-                      ),
-                    ],
-                  ),
                 ),
-              ),
-
-              const SizedBox(height: 20),
-
-              /// CATEGORY LIMIT ANALYTICS
-              Column(
-                children: categoryBudgets.entries.map((entry) {
-                  final spent = categoryData[entry.key] ?? 0;
-
-                  final limit = entry.value;
-
-                  final double percent = (spent / limit)
-                      .clamp(0.0, 1.0)
-                      .toDouble();
-
-                  final color = getBudgetColor(spent, limit);
-
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            entry.key,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-
-                          const SizedBox(height: 6),
-
-                          Text(
-                            "SGD ${spent.toStringAsFixed(0)} / ${limit.toStringAsFixed(0)}",
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          LinearProgressIndicator(
-                            value: percent > 1 ? 1 : percent,
-                            color: color,
-                            minHeight: 8,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
               ),
 
               const SizedBox(height: 20),
@@ -403,7 +382,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-
                 itemCount: expenses.length,
 
                 itemBuilder: (context, index) {
@@ -430,12 +408,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         subtitle: Row(
                           children: [
                             Text(expense.category),
-                            const SizedBox(width: 10),
-                            const Icon(
-                              Icons.receipt,
-                              size: 16,
-                              color: Colors.grey,
-                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.receipt, size: 16),
                           ],
                         ),
 
