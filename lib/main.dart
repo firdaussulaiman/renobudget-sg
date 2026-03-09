@@ -41,6 +41,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   int touchedIndex = -1;
 
+  /// CATEGORY LIMITS
+  final Map<String, double> categoryBudgets = {
+    "Carpentry": 25000,
+    "Electrical": 5000,
+    "Painting": 4000,
+    "Lighting": 3000,
+    "Plumbing": 3000,
+    "Flooring": 8000,
+    "Furniture": 5000,
+    "Appliances": 4000,
+  };
+
   final List<Color> chartColors = [
     Colors.indigo,
     Colors.orange,
@@ -101,49 +113,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// EDIT BUDGET
-  void editBudget() {
-    final controller = TextEditingController(text: totalBudget.toString());
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Edit Total Budget"),
-
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: "Budget (SGD)"),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  totalBudget = double.tryParse(controller.text) ?? totalBudget;
-                });
-
-                Navigator.pop(context);
-              },
-              child: const Text("Save"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   void addExpense(Expense expense) {
     setState(() {
       expenses.add(expense);
     });
-
     saveExpenses();
   }
 
@@ -151,7 +124,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       expenses[index] = updatedExpense;
     });
-
     saveExpenses();
   }
 
@@ -159,7 +131,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       expenses.removeAt(index);
     });
-
     saveExpenses();
   }
 
@@ -198,6 +169,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Color getBudgetColor(double spent, double limit) {
+    final percent = spent / limit;
+
+    if (percent > 1) {
+      return Colors.red;
+    } else if (percent > 0.8) {
+      return Colors.orange;
+    } else {
+      return Colors.green;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final categoryData = getCategoryTotals();
@@ -216,16 +199,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           child: Column(
             children: [
-              /// BUDGET CARDS
+              /// TOTAL BUDGET
               Card(
                 child: ListTile(
                   title: const Text("Total Budget"),
                   subtitle: Text("SGD ${totalBudget.toStringAsFixed(0)}"),
-                  trailing: const Icon(Icons.edit),
-                  onTap: editBudget,
                 ),
               ),
 
+              /// TOTAL SPENT
               Card(
                 child: ListTile(
                   title: const Text("Total Spent"),
@@ -233,6 +215,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
+              /// REMAINING
               Card(
                 child: ListTile(
                   title: const Text("Remaining Budget"),
@@ -242,10 +225,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               const SizedBox(height: 20),
 
-              /// PROGRESS BAR
+              /// BUDGET PROGRESS
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
+
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -256,7 +240,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                       const SizedBox(height: 10),
 
-                      LinearProgressIndicator(value: progress, minHeight: 10),
+                      LinearProgressIndicator(
+                        value: progress > 1 ? 1 : progress,
+                        minHeight: 10,
+                      ),
 
                       const SizedBox(height: 6),
 
@@ -365,6 +352,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               const SizedBox(height: 20),
 
+              /// CATEGORY LIMIT ANALYTICS
+              Column(
+                children: categoryBudgets.entries.map((entry) {
+                  final spent = categoryData[entry.key] ?? 0;
+
+                  final limit = entry.value;
+
+                  final double percent = (spent / limit)
+                      .clamp(0.0, 1.0)
+                      .toDouble();
+
+                  final color = getBudgetColor(spent, limit);
+
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.key,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+
+                          const SizedBox(height: 6),
+
+                          Text(
+                            "SGD ${spent.toStringAsFixed(0)} / ${limit.toStringAsFixed(0)}",
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          LinearProgressIndicator(
+                            value: percent > 1 ? 1 : percent,
+                            color: color,
+                            minHeight: 8,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+
+              const SizedBox(height: 20),
+
               /// EXPENSE LIST
               ListView.builder(
                 shrinkWrap: true,
@@ -392,7 +426,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                       child: ListTile(
                         title: Text(expense.item),
-                        subtitle: Text(expense.category),
+
+                        subtitle: Row(
+                          children: [
+                            Text(expense.category),
+                            const SizedBox(width: 10),
+                            const Icon(
+                              Icons.receipt,
+                              size: 16,
+                              color: Colors.grey,
+                            ),
+                          ],
+                        ),
 
                         trailing: Text(
                           "SGD ${expense.amount.toStringAsFixed(0)}",
