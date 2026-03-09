@@ -15,7 +15,11 @@ class RenoBudgetApp extends StatelessWidget {
     return MaterialApp(
       title: 'RenoBudget SG',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(fontFamily: 'Roboto', primarySwatch: Colors.indigo),
+      theme: ThemeData(
+        primarySwatch: Colors.indigo,
+        scaffoldBackgroundColor: const Color(0xffF5F7FB),
+        fontFamily: 'Roboto',
+      ),
       home: const DashboardScreen(),
     );
   }
@@ -37,11 +41,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   double get remainingBudget => totalBudget - totalSpent;
 
-  /// EDIT BUDGET POPUP
-  void editBudget() {
-    final controller = TextEditingController();
+  double get progress =>
+      totalBudget == 0 ? 0 : (totalSpent / totalBudget).clamp(0, 1);
 
-    controller.text = totalBudget.toString();
+  /// PIE CHART COLORS
+  final List<Color> chartColors = [
+    Colors.indigo,
+    Colors.orange,
+    Colors.green,
+    Colors.red,
+    Colors.purple,
+    Colors.teal,
+    Colors.amber,
+  ];
+
+  /// EDIT BUDGET
+  void editBudget() {
+    final controller = TextEditingController(text: totalBudget.toString());
 
     showDialog(
       context: context,
@@ -57,14 +73,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           actions: [
             TextButton(
+              onPressed: () => Navigator.pop(context),
               child: const Text("Cancel"),
-              onPressed: () {
-                Navigator.pop(context);
-              },
             ),
 
             ElevatedButton(
-              child: const Text("Save"),
               onPressed: () {
                 setState(() {
                   totalBudget = double.tryParse(controller.text) ?? totalBudget;
@@ -72,6 +85,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 Navigator.pop(context);
               },
+              child: const Text("Save"),
             ),
           ],
         );
@@ -137,90 +151,170 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final categoryData = getCategoryTotals();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("RenoBudget SG")),
+      appBar: AppBar(title: const Text("RenoBudget SG"), elevation: 0),
 
       floatingActionButton: FloatingActionButton(
         onPressed: openAddExpense,
         child: const Icon(Icons.add),
       ),
 
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
 
-        child: Column(
-          children: [
-            /// TOTAL BUDGET
-            Card(
-              child: ListTile(
-                title: const Text("Total Budget"),
-                subtitle: Text("SGD ${totalBudget.toStringAsFixed(0)}"),
-                trailing: const Icon(Icons.edit),
-                onTap: editBudget,
-              ),
-            ),
-
-            /// TOTAL SPENT
-            Card(
-              child: ListTile(
-                title: const Text("Total Spent"),
-                subtitle: Text("SGD ${totalSpent.toStringAsFixed(0)}"),
-              ),
-            ),
-
-            /// REMAINING
-            Card(
-              child: ListTile(
-                title: const Text("Remaining Budget"),
-                subtitle: Text("SGD ${remainingBudget.toStringAsFixed(0)}"),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            /// PIE CHART
-            SizedBox(
-              height: 200,
-              child: PieChart(
-                PieChartData(
-                  sections: categoryData.entries.map((entry) {
-                    final percentage = totalSpent == 0
-                        ? 0
-                        : (entry.value / totalSpent * 100);
-
-                    return PieChartSectionData(
-                      value: entry.value,
-                      title: "${percentage.toStringAsFixed(0)}%",
-                      radius: 70,
-                    );
-                  }).toList(),
+          child: Column(
+            children: [
+              /// TOTAL BUDGET
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  title: const Text("Total Budget"),
+                  subtitle: Text("SGD ${totalBudget.toStringAsFixed(0)}"),
+                  trailing: const Icon(Icons.edit),
+                  onTap: editBudget,
                 ),
               ),
-            ),
 
-            const SizedBox(height: 20),
+              /// TOTAL SPENT
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  title: const Text("Total Spent"),
+                  subtitle: Text("SGD ${totalSpent.toStringAsFixed(0)}"),
+                ),
+              ),
 
-            /// EXPENSE LIST
-            Expanded(
-              child: ListView.builder(
+              /// REMAINING BUDGET
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  title: const Text("Remaining Budget"),
+                  subtitle: Text("SGD ${remainingBudget.toStringAsFixed(0)}"),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              /// BUDGET PROGRESS
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Budget Usage",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 10,
+                        backgroundColor: Colors.grey.shade300,
+                        color: Colors.indigo,
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text("${(progress * 100).toStringAsFixed(0)}% used"),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              /// PIE CHART
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+
+                  child: SizedBox(
+                    height: 220,
+
+                    child: PieChart(
+                      PieChartData(
+                        sections: categoryData.entries
+                            .toList()
+                            .asMap()
+                            .entries
+                            .map((entry) {
+                              final index = entry.key;
+                              final data = entry.value;
+
+                              final percentage = totalSpent == 0
+                                  ? 0
+                                  : (data.value / totalSpent * 100);
+
+                              return PieChartSectionData(
+                                color: chartColors[index % chartColors.length],
+                                value: data.value,
+                                title: "${percentage.toStringAsFixed(0)}%",
+                                radius: 70,
+                                titleStyle: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
+                            })
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              /// EXPENSE LIST
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+
                 itemCount: expenses.length,
+
                 itemBuilder: (context, index) {
                   final expense = expenses[index];
 
-                  return Dismissible(
-                    key: Key(expense.item + index.toString()),
-
-                    background: Container(
-                      color: Colors.red,
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.only(left: 20),
-                      child: const Icon(Icons.delete, color: Colors.white),
+                  return Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
 
-                    onDismissed: (direction) {
-                      deleteExpense(index);
-                    },
+                    child: Dismissible(
+                      key: Key(expense.item + index.toString()),
 
-                    child: Card(
+                      background: Container(
+                        color: Colors.red,
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.only(left: 20),
+                        child: const Icon(Icons.delete, color: Colors.white),
+                      ),
+
+                      onDismissed: (direction) {
+                        deleteExpense(index);
+                      },
+
                       child: ListTile(
                         title: Text(expense.item),
                         subtitle: Text(expense.category),
@@ -228,6 +322,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           "SGD ${expense.amount.toStringAsFixed(0)}",
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
+
                         onTap: () {
                           openEditExpense(index);
                         },
@@ -236,8 +331,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 },
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
