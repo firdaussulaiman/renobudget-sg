@@ -1,12 +1,19 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import '../models/expense.dart';
-import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+
+import '../models/expense.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   final Expense? existingExpense;
+  final bool isProUser;
 
-  const AddExpenseScreen({super.key, this.existingExpense});
+  const AddExpenseScreen({
+    super.key,
+    this.existingExpense,
+    required this.isProUser,
+  });
 
   @override
   State<AddExpenseScreen> createState() => _AddExpenseScreenState();
@@ -18,7 +25,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   String selectedCategory = "Carpentry";
 
-  File? receiptImage;
+  Uint8List? receiptBytes;
+  String? receiptLabel;
 
   final picker = ImagePicker();
 
@@ -41,25 +49,49 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       itemController.text = widget.existingExpense!.item;
       amountController.text = widget.existingExpense!.amount.toString();
       selectedCategory = widget.existingExpense!.category;
-
-      if (widget.existingExpense!.receiptPath != null) {
-        receiptImage = File(widget.existingExpense!.receiptPath!);
-      }
+      receiptLabel = widget.existingExpense!.receiptPath;
     }
   }
 
-  /// PICK IMAGE
+  void showProDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("RenoBudget Pro"),
+          content: const Text(
+            "Receipt photo upload is a Pro feature.\n\n"
+            "Planned one-time purchase: \$2.99",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Later"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> pickImage() async {
+    if (!widget.isProUser) {
+      showProDialog();
+      return;
+    }
+
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
 
     if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
+
       setState(() {
-        receiptImage = File(pickedFile.path);
+        receiptBytes = bytes;
+        receiptLabel = pickedFile.name;
       });
     }
   }
 
-  /// SAVE EXPENSE
   void saveExpense() {
     final item = itemController.text.trim();
     final amount = double.tryParse(amountController.text) ?? 0;
@@ -71,11 +103,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return;
     }
 
-    Expense expense = Expense(
+    final expense = Expense(
       item: item,
       category: selectedCategory,
       amount: amount,
-      receiptPath: receiptImage?.path,
+      receiptPath: receiptLabel,
     );
 
     Navigator.pop(context, expense);
@@ -87,14 +119,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(isEditing ? "Edit Expense" : "Add Expense")),
-
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(20),
-
           child: Column(
             children: [
-              /// ITEM NAME
               TextField(
                 controller: itemController,
                 decoration: const InputDecoration(
@@ -102,12 +131,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              /// CATEGORY
               DropdownButtonFormField<String>(
-                initialValue: selectedCategory,
+                value: selectedCategory,
                 decoration: const InputDecoration(
                   labelText: "Category",
                   border: OutlineInputBorder(),
@@ -124,10 +150,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   });
                 },
               ),
-
               const SizedBox(height: 20),
-
-              /// AMOUNT
               TextField(
                 controller: amountController,
                 keyboardType: const TextInputType.numberWithOptions(
@@ -139,34 +162,34 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              /// RECEIPT BUTTON
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: pickImage,
                   icon: const Icon(Icons.photo_camera),
-                  label: const Text("Add Receipt Photo"),
+                  label: Text(
+                    widget.isProUser
+                        ? "Add Receipt Photo"
+                        : "Add Receipt Photo (Pro)",
+                  ),
                 ),
               ),
-
               const SizedBox(height: 10),
-
-              /// IMAGE PREVIEW
-              if (receiptImage != null)
+              if (receiptBytes != null)
                 Column(
                   children: [
                     const Text("Receipt Preview"),
                     const SizedBox(height: 10),
-                    Image.file(receiptImage!, height: 140),
+                    Image.memory(receiptBytes!, height: 140),
                   ],
+                )
+              else if (receiptLabel != null)
+                Text(
+                  "Receipt attached: $receiptLabel",
+                  style: const TextStyle(color: Colors.grey),
                 ),
-
               const SizedBox(height: 30),
-
-              /// SAVE BUTTON
               SizedBox(
                 width: double.infinity,
                 height: 50,

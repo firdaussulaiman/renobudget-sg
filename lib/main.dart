@@ -1,13 +1,14 @@
-import 'package:flutter/material.dart';
-import 'models/expense.dart';
-import 'screens/add_expense.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'models/expense.dart';
+import 'screens/add_expense.dart';
 
 void main() {
   runApp(const RenoBudgetApp());
@@ -39,12 +40,10 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   double totalBudget = 50000;
-
   List<Expense> expenses = [];
-
   int touchedIndex = -1;
+  bool isProUser = false;
 
-  /// Renovation Timeline
   Map<String, bool> renovationTimeline = {
     "Hacking": false,
     "Plumbing": false,
@@ -70,6 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     loadBudget();
     loadExpenses();
     loadTimeline();
+    loadProStatus();
   }
 
   double get totalSpent => expenses.fold(0, (sum, item) => sum + item.amount);
@@ -77,24 +77,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double get remainingBudget => totalBudget - totalSpent;
 
   double get progress =>
-      totalBudget == 0 ? 0 : (totalSpent / totalBudget).clamp(0, 1);
+      totalBudget == 0 ? 0 : (totalSpent / totalBudget).clamp(0.0, 1.0);
 
-  /// SAVE BUDGET
   Future<void> saveBudget() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('totalBudget', totalBudget);
   }
 
-  /// LOAD BUDGET
   Future<void> loadBudget() async {
     final prefs = await SharedPreferences.getInstance();
-
     setState(() {
       totalBudget = prefs.getDouble('totalBudget') ?? 50000;
     });
   }
 
-  /// SAVE EXPENSES
   Future<void> saveExpenses() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -112,21 +108,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await prefs.setStringList('expenses', data);
   }
 
-  /// LOAD EXPENSES
   Future<void> loadExpenses() async {
     final prefs = await SharedPreferences.getInstance();
-
     final data = prefs.getStringList('expenses');
 
     if (data != null) {
       setState(() {
         expenses = data.map((e) {
           final decoded = jsonDecode(e);
-
           return Expense(
             item: decoded['item'],
             category: decoded['category'],
-            amount: decoded['amount'],
+            amount: (decoded['amount'] as num).toDouble(),
             receiptPath: decoded['receiptPath'],
           );
         }).toList();
@@ -134,17 +127,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// SAVE TIMELINE
   Future<void> saveTimeline() async {
     final prefs = await SharedPreferences.getInstance();
-
     await prefs.setString("timeline", jsonEncode(renovationTimeline));
   }
 
-  /// LOAD TIMELINE
   Future<void> loadTimeline() async {
     final prefs = await SharedPreferences.getInstance();
-
     final data = prefs.getString("timeline");
 
     if (data != null) {
@@ -154,34 +143,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// ADD EXPENSE
+  Future<void> saveProStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("isProUser", isProUser);
+  }
+
+  Future<void> loadProStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isProUser = prefs.getBool("isProUser") ?? false;
+    });
+  }
+
   void addExpense(Expense expense) {
     setState(() {
       expenses.add(expense);
     });
-
     saveExpenses();
   }
 
-  /// UPDATE EXPENSE
   void updateExpense(int index, Expense updatedExpense) {
     setState(() {
       expenses[index] = updatedExpense;
     });
-
     saveExpenses();
   }
 
-  /// DELETE EXPENSE
   void deleteExpense(int index) {
     setState(() {
       expenses.removeAt(index);
     });
-
     saveExpenses();
   }
 
-  /// EDIT TOTAL BUDGET
   void editBudget() {
     final controller = TextEditingController(text: totalBudget.toString());
 
@@ -190,29 +184,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) {
         return AlertDialog(
           title: const Text("Edit Total Budget"),
-
           content: TextField(
             controller: controller,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(labelText: "Budget Amount"),
           ),
-
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               child: const Text("Cancel"),
             ),
-
             ElevatedButton(
               onPressed: () {
                 setState(() {
                   totalBudget = double.tryParse(controller.text) ?? totalBudget;
                 });
-
                 saveBudget();
-
                 Navigator.pop(context);
               },
               child: const Text("Save"),
@@ -223,8 +210,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void showProDialog({String featureName = "this feature"}) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("RenoBudget Pro"),
+          content: Text(
+            "Unlock Pro to use $featureName.\n\n"
+            "• Receipt photo tracking\n"
+            "• PDF export reports\n"
+            "• Future premium tools\n\n"
+            "Planned one-time purchase: \$2.99",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Later"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                // Temporary demo unlock.
+                setState(() {
+                  isProUser = true;
+                });
+                await saveProStatus();
+                if (mounted) Navigator.pop(context);
+              },
+              child: const Text("Unlock Demo"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Map<String, double> getCategoryTotals() {
-    Map<String, double> data = {};
+    final Map<String, double> data = {};
 
     for (var expense in expenses) {
       data[expense.category] = (data[expense.category] ?? 0) + expense.amount;
@@ -233,7 +255,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return data;
   }
 
-  /// EXPORT PDF
   Future<void> exportPDF() async {
     final pdf = pw.Document();
 
@@ -250,31 +271,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
-
               pw.SizedBox(height: 20),
-
               pw.Text("Total Budget: SGD ${totalBudget.toStringAsFixed(0)}"),
               pw.Text("Total Spent: SGD ${totalSpent.toStringAsFixed(0)}"),
               pw.Text(
                 "Remaining Budget: SGD ${remainingBudget.toStringAsFixed(0)}",
               ),
-
               pw.SizedBox(height: 20),
-
-              pw.Text("Expenses", style: pw.TextStyle(fontSize: 18)),
-
+              pw.Text(
+                "Expenses",
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 10),
-
-              ...expenses.map((e) {
-                return pw.Row(
+              ...expenses.map(
+                (e) => pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text("${e.item} (${e.category})"),
-
                     pw.Text("SGD ${e.amount.toStringAsFixed(0)}"),
                   ],
-                );
-              }),
+                ),
+              ),
             ],
           );
         },
@@ -289,7 +309,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> openAddExpense() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const AddExpenseScreen()),
+      MaterialPageRoute(
+        builder: (context) => AddExpenseScreen(isProUser: isProUser),
+      ),
     );
 
     if (result != null && result is Expense) {
@@ -301,8 +323,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            AddExpenseScreen(existingExpense: expenses[index]),
+        builder: (context) => AddExpenseScreen(
+          existingExpense: expenses[index],
+          isProUser: isProUser,
+        ),
       ),
     );
 
@@ -319,25 +343,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: const Text("RenoBudget SG"),
         actions: [
+          if (!isProUser)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(
+                child: Chip(
+                  label: Text("FREE"),
+                  backgroundColor: Colors.orangeAccent,
+                ),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
-            onPressed: exportPDF,
+            onPressed: () {
+              if (isProUser) {
+                exportPDF();
+              } else {
+                showProDialog(featureName: "PDF export");
+              }
+            },
           ),
         ],
       ),
-
       floatingActionButton: FloatingActionButton(
         onPressed: openAddExpense,
         child: const Icon(Icons.add),
       ),
-
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16),
-
           child: Column(
             children: [
-              /// TOTAL BUDGET
               Card(
                 child: ListTile(
                   title: const Text("Total Budget"),
@@ -348,26 +384,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-
-              /// TOTAL SPENT
               Card(
                 child: ListTile(
                   title: const Text("Total Spent"),
                   subtitle: Text("SGD ${totalSpent.toStringAsFixed(0)}"),
                 ),
               ),
-
-              /// REMAINING
               Card(
                 child: ListTile(
                   title: const Text("Remaining Budget"),
                   subtitle: Text("SGD ${remainingBudget.toStringAsFixed(0)}"),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              /// BUDGET PROGRESS
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -378,22 +407,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         "Budget Usage",
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-
                       const SizedBox(height: 10),
-
                       LinearProgressIndicator(value: progress, minHeight: 10),
-
                       const SizedBox(height: 6),
-
                       Text("${(progress * 100).toStringAsFixed(0)}% used"),
                     ],
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              /// RENOVATION TIMELINE
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -406,32 +428,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           fontSize: 16,
                         ),
                       ),
-
                       const SizedBox(height: 10),
-
                       ...renovationTimeline.keys.map((stage) {
                         return CheckboxListTile(
                           title: Text(stage),
-
                           value: renovationTimeline[stage],
-
                           onChanged: (value) {
                             setState(() {
-                              renovationTimeline[stage] = value!;
+                              renovationTimeline[stage] = value ?? false;
                             });
-
                             saveTimeline();
                           },
                         );
-                      }).toList(),
+                      }),
                     ],
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              /// PIE CHART
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
@@ -446,87 +460,122 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                         )
-                      : SizedBox(
-                          height: 220,
-                          child: PieChart(
-                            PieChartData(
-                              sections: categoryData.entries
-                                  .toList()
-                                  .asMap()
-                                  .entries
-                                  .map((entry) {
-                                    final index = entry.key;
-                                    final data = entry.value;
+                      : Column(
+                          children: [
+                            SizedBox(
+                              height: 220,
+                              child: PieChart(
+                                PieChartData(
+                                  pieTouchData: PieTouchData(
+                                    touchCallback: (event, response) {
+                                      setState(() {
+                                        if (!event
+                                                .isInterestedForInteractions ||
+                                            response == null ||
+                                            response.touchedSection == null) {
+                                          touchedIndex = -1;
+                                          return;
+                                        }
+                                        touchedIndex = response
+                                            .touchedSection!
+                                            .touchedSectionIndex;
+                                      });
+                                    },
+                                  ),
+                                  sections: categoryData.entries
+                                      .toList()
+                                      .asMap()
+                                      .entries
+                                      .map((entry) {
+                                        final index = entry.key;
+                                        final data = entry.value;
+                                        final percentage = totalSpent == 0
+                                            ? 0
+                                            : (data.value / totalSpent * 100);
+                                        final isTouched = index == touchedIndex;
 
-                                    final percentage = totalSpent == 0
-                                        ? 0
-                                        : (data.value / totalSpent * 100);
-
-                                    return PieChartSectionData(
+                                        return PieChartSectionData(
+                                          color:
+                                              chartColors[index %
+                                                  chartColors.length],
+                                          value: data.value,
+                                          title:
+                                              "${percentage.toStringAsFixed(0)}%",
+                                          radius: isTouched ? 80 : 70,
+                                          titleStyle: const TextStyle(
+                                            color: Colors.white,
+                                          ),
+                                        );
+                                      })
+                                      .toList(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ...categoryData.entries.toList().asMap().entries.map((
+                              entry,
+                            ) {
+                              final index = entry.key;
+                              final data = entry.value;
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 14,
+                                      height: 14,
                                       color:
                                           chartColors[index %
                                               chartColors.length],
-                                      value: data.value,
-                                      title:
-                                          "${percentage.toStringAsFixed(0)}%",
-                                      radius: 70,
-                                      titleStyle: const TextStyle(
-                                        color: Colors.white,
-                                      ),
-                                    );
-                                  })
-                                  .toList(),
-                            ),
-                          ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "${data.key} - SGD ${data.value.toStringAsFixed(0)}",
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
                         ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              /// EXPENSE LIST
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: expenses.length,
-
                 itemBuilder: (context, index) {
                   final expense = expenses[index];
 
                   return Card(
                     child: Dismissible(
-                      key: Key(expense.item + index.toString()),
-
+                      key: Key("${expense.item}_$index"),
                       background: Container(
                         color: Colors.red,
                         alignment: Alignment.centerLeft,
                         padding: const EdgeInsets.only(left: 20),
                         child: const Icon(Icons.delete, color: Colors.white),
                       ),
-
                       onDismissed: (direction) {
                         deleteExpense(index);
                       },
-
                       child: ListTile(
                         title: Text(expense.item),
-
                         subtitle: Row(
                           children: [
                             Text(expense.category),
-
                             const SizedBox(width: 6),
-
                             if (expense.receiptPath != null)
                               const Icon(Icons.receipt, size: 16),
                           ],
                         ),
-
                         trailing: Text(
                           "SGD ${expense.amount.toStringAsFixed(0)}",
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-
                         onTap: () {
                           openEditExpense(index);
                         },
